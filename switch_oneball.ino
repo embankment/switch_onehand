@@ -135,6 +135,16 @@ typedef struct {
 
 volatile Kensington_Eagle_state_t Keagle;
 
+// GPIO Pins for Pushbuttons
+#define BUTTON_A_PIN 4
+#define BUTTON_B_PIN 5
+#define BUTTON_X_PIN 6
+#define BUTTON_Y_PIN 9
+#define BUTTON_UP_PIN 10
+#define BUTTON_DOWN_PIN 11
+#define BUTTON_LEFT_PIN 12
+#define BUTTON_RIGHT_PIN 13
+
 // pio-usb is required for rp2040 usb host
 #include "pio_usb.h"
 #include "pio-usb-host-pins.h"
@@ -166,6 +176,16 @@ void setup()
   TinyUSBDevice.setID(0x047d, 0x2068);
   Gamepad.begin();
 
+  // Initialize GPIO pins
+  pinMode(BUTTON_A_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_B_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_X_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_Y_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_UP_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_DOWN_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_LEFT_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_RIGHT_PIN, INPUT_PULLUP);
+
   // wait until device mounted
   while( !TinyUSBDevice.mounted() ) delay(1);
 #if USB_DEBUG
@@ -183,13 +203,36 @@ void print_KEagle_controls()
   DBG_println();
 }
 
-// Swap buttons 0 and 2 so the joystick trigger maps to the gamepad A button.
-uint16_t remap(uint16_t buttons) {
-  uint16_t b0 = buttons & (1<<0);
-  uint16_t b2 = (buttons & (1<<2));
-  buttons &= ~5;
-  buttons |= (b2 >> 2) | (b0 << 2);
-  return buttons;
+// Function to print joystick positions and button states for debugging
+void print_debug_info(int left_x, int left_y, int right_x, int right_y, uint16_t buttons) {
+  DBG_printf("Left Joystick - X: %d, Y: %d\n", left_x, left_y);
+  DBG_printf("Right Joystick - X: %d, Y: %d\n", right_x, right_y);
+  DBG_printf("Buttons State: 0x%04x\n", buttons);
+}
+
+// Sprint subroutine
+void sprint() {
+  int sprint_iterations = 5; // Number of iterations for sprint
+  int sprint_delay = 50;     // Delay in milliseconds between each iteration
+
+  for (int i = 0; i < sprint_iterations; i++) {
+    // Push one joystick forward and the other backward
+    Gamepad.leftYAxis(0);
+    Gamepad.rightYAxis(255);
+    Gamepad.loop();
+    delay(sprint_delay);
+
+    // Reverse their positions
+    Gamepad.leftYAxis(255);
+    Gamepad.rightYAxis(0);
+    Gamepad.loop();
+    delay(sprint_delay);
+  }
+
+  // Set both joysticks full forward
+  Gamepad.leftYAxis(0);
+  Gamepad.rightYAxis(0);
+  Gamepad.loop();
 }
 
 void loop() {
@@ -220,6 +263,15 @@ void loop() {
               Keagle.Y_Control.MAX, 0, 255);
           int right_x_joystick = rpt->scroll;
           int right_y_joystick = DPAD_Y(rpt->hat);
+
+          // Calculate the positions for tank steer
+          int left_joystick = left_y_joystick + right_x_joystick;
+          int right_joystick = left_y_joystick - right_x_joystick;
+
+          // Constrain the joystick values
+          left_joystick = constrain(left_joystick, 0, 255);
+          right_joystick = constrain(right_joystick, 0, 255);
+
           if ((abs(left_x_joystick - 127) > Keagle.X_Control.DEADZONE) ||
               (abs(left_y_joystick - 127) > Keagle.Y_Control.DEADZONE) ||
               (abs(right_x_joystick - 127) > Keagle.X_Control.DEADZONE) ||
@@ -233,18 +285,58 @@ void loop() {
                   left_x_joystick, left_y_joystick,
                   right_x_joystick, right_y_joystick);
             }
-            Gamepad.leftXAxis(left_x_joystick);
+            Gamepad.leftXAxis(left_joystick);
             Gamepad.leftYAxis(left_y_joystick);
-            Gamepad.rightXAxis(right_x_joystick);
+            Gamepad.rightXAxis(right_joystick);
             Gamepad.rightYAxis(right_y_joystick);
-            Gamepad.buttons(remap(buttons));
+            Gamepad.buttons(buttons);
             Gamepad.loop();
             old_buttons = buttons;
+
+            // Print debugging information
+            print_debug_info(left_joystick, left_y_joystick, right_joystick, right_y_joystick, buttons);
           }
         }
       }
       Keagle.available = false;
     }
+  }
+
+  // Read GPIO button states and map to gamepad buttons
+  if (digitalRead(BUTTON_A_PIN) == LOW) {
+    Gamepad.pressButton(NSGAMEPAD_BUTTON_A);
+  } else {
+    Gamepad.releaseButton(NSGAMEPAD_BUTTON_A);
+  }
+  
+  if (digitalRead(BUTTON_B_PIN) == LOW) {
+    Gamepad.pressButton(NSGAMEPAD_BUTTON_B);
+  } else {
+    Gamepad.releaseButton(NSGAMEPAD_BUTTON_B);
+  }
+  
+  if (digitalRead(BUTTON_X_PIN) == LOW) {
+    Gamepad.pressButton(NSGAMEPAD_BUTTON_X);
+  } else {
+    Gamepad.releaseButton(NSGAMEPAD_BUTTON_X);
+  }
+  
+  if (digitalRead(BUTTON_Y_PIN) == LOW) {
+    Gamepad.pressButton(NSGAMEPAD_BUTTON_Y);
+  } else {
+    Gamepad.releaseButton(NSGAMEPAD_BUTTON_Y);
+  }
+  
+  if (digitalRead(BUTTON_UP_PIN) == LOW) {
+    Gamepad.hatUp();
+  } else if (digitalRead(BUTTON_DOWN_PIN) == LOW) {
+    Gamepad.hatDown();
+  } else if (digitalRead(BUTTON_LEFT_PIN) == LOW) {
+    Gamepad.hatLeft();
+  } else if (digitalRead(BUTTON_RIGHT_PIN) == LOW) {
+    Gamepad.hatRight();
+  } else {
+    Gamepad.hatCenter();
   }
 }
 
